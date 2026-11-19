@@ -15,7 +15,12 @@ export default {
   if(nome.length<2||!/^\+?[\d\s()-]{10,20}$/.test(telefone)||!['imovel','veiculo','carta','outros'].includes(modalidade)||d.consentimento!==true)return new Response('Invalid input',{status:400});
   if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY)return new Response('Service unavailable',{status:503});
   const payload={nome,telefone,modalidade,faixa_credito:clean(d.faixa_credito,80),mensagem:clean(d.mensagem,1000),origem:'site',consentimento:true};
-  const upstream=await fetch(env.SUPABASE_URL.replace(/\/$/,'')+'/rest/v1/leads',{method:'POST',headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:'Bearer '+env.SUPABASE_SERVICE_ROLE_KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(payload)});
+  const key=env.SUPABASE_SERVICE_ROLE_KEY.trim();
+  const headers={apikey:key,'Content-Type':'application/json',Prefer:'return=minimal'};
+  // New sb_secret_ keys are opaque API keys, not JWTs: do not send them as Bearer tokens.
+  if(!key.startsWith('sb_secret_')) headers.Authorization='Bearer '+key;
+  const upstream=await fetch(env.SUPABASE_URL.replace(/\/$/,'')+'/rest/v1/leads',{method:'POST',headers,body:JSON.stringify(payload)});
+  if(!upstream.ok) console.error(JSON.stringify({event:'lead_insert_failed',upstream_status:upstream.status}));
   return upstream.ok?new Response(JSON.stringify({ok:true}),{status:201,headers:{'content-type':'application/json'}}):new Response('Unable to save lead',{status:502});
  }
 };
