@@ -61,17 +61,45 @@ async function handleAdmin(request,env,path){
   if(!session.access_token)return json({error:'Falha de autenticação'},502);
   return json({access_token:session.access_token,expires_in:session.expires_in});
  }
- if(path!=='/api/admin/leads'||request.method!=='GET')return json({error:'Rota não encontrada'},404);
+ if(!['/api/admin/leads','/api/admin/lead'].includes(path))return json({error:'Rota não encontrada'},404);
  const authorization=request.headers.get('Authorization')||'';
  if(!authorization.startsWith('Bearer '))return json({error:'Login necessário'},401);
  const verify=await fetch(base+'/auth/v1/user',{headers:{apikey:key,Authorization:authorization}});
  if(!verify.ok)return json({error:'Sessão inválida ou expirada'},401);
  const user=await verify.json();
  if(!user.id||user.email?.toLowerCase()!==env.ADMIN_EMAIL.trim().toLowerCase())return json({error:'Acesso negado'},403);
+ if(path==='/api/admin/lead'){
+  if(request.method!=='PATCH')return json({error:'Método inválido'},405);
+  let data;try{data=await request.json()}catch{return json({error:'Dados inválidos'},400)}
+  if(!data||typeof data.id!=='string'||!/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(data.id))return json({error:'ID inválido'},400);
+  const changes={};
+  if(Object.hasOwn(data,'status')){
+   if(!['novo','contatado','qualificado','convertido','descartado'].includes(data.status))return json({error:'Status inválido'},400);
+   changes.status=data.status;
+  }
+  if(Object.hasOwn(data,'observacoes')){
+   if(typeof data.observacoes!=='string'||data.observacoes.length>3000)return json({error:'Observação inválida (máximo 3000 caracteres)'},400);
+   changes.observacoes=data.observacoes;
+  }
+  if(!Object.keys(changes).length)return json({error:'Nenhuma alteração'},400);
+  const update=await fetch(base+'/rest/v1/leads?id=eq.'+encodeURIComponent(data.id),{method:'PATCH',headers:{...headers,Prefer:'return=representation'},body:JSON.stringify(changes)});
+  if(!update.ok){console.error('crm_update_failed',update.status);return json({error:'Não foi possível salvar'},502)}
+  const updated=await update.json();return updated.length?json({ok:true,lead:updated[0]}):json({error:'Lead não encontrado'},404);
+ }
+ if(request.method!=='GET')return json({error:'Método inválido'},405);
+ const params=new URL(request.url).searchParams;
+ const search=(params.get('search')||'').trim();
+ const status=params.get('status')||'';
+ const modalidade=params.get('modalidade')||'';
+ if(search.length>80||status&&!['novo','contatado','qualificado','convertido','descartado'].includes(status)||modalidade&&!['imovel','veiculo','carta','outros'].includes(modalidade))return json({error:'Filtro inválido'},400);
  const pageRaw=new URL(request.url).searchParams.get('page')||'1';
  if(!/^[1-9]\d{0,5}$/.test(pageRaw))return json({error:'Página inválida'},400);
  const page=Number(pageRaw),size=50,offset=(page-1)*size;
- const list=await fetch(base+'/rest/v1/leads?select=id,created_at,nome,telefone,modalidade,faixa_credito,mensagem,status&order=created_at.desc&limit='+(size+1)+'&offset='+offset,{headers});
+ const filters=new URLSearchParams({select:'id,created_at,nome,telefone,modalidade,faixa_credito,mensagem,status,observacoes',order:'created_at.desc',limit:String(size+1),offset:String(offset)});
+ if(status)filters.set('status','eq.'+status);
+ if(modalidade)filters.set('modalidade','eq.'+modalidade);
+ if(search){const safe=search.replace(/[,%().*\\]/g,' ').trim();if(safe)filters.set('or','(nome.ilike.*'+safe+'*,telefone.ilike.*'+safe+'*)');}
+ const list=await fetch(base+'/rest/v1/leads?'+filters.toString(),{headers});
  if(!list.ok){console.error('admin_leads_fetch_failed',list.status);return json({error:'Não foi possível carregar contatos'},502)}
  const leads=await list.json();return json({leads:leads.slice(0,size),page,has_more:leads.length>size});
 }
