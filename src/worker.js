@@ -2,7 +2,7 @@
 // Required secrets: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
 // Never expose the service-role key in client code.
 export default {
- async fetch(request, env) {
+ async fetch(request, env, ctx) {
   const url = new URL(request.url);
   if(url.pathname.startsWith('/api/admin/')) return handleAdmin(request,env,url.pathname);
   if (url.pathname !== '/api/leads') return env.ASSETS.fetch(request);
@@ -22,9 +22,27 @@ export default {
   if(!key.startsWith('sb_secret_')) headers.Authorization='Bearer '+key;
   const upstream=await fetch(env.SUPABASE_URL.replace(/\/$/,'')+'/rest/v1/leads',{method:'POST',headers,body:JSON.stringify(payload)});
   if(!upstream.ok) console.error(JSON.stringify({event:'lead_insert_failed',upstream_status:upstream.status}));
+  if(upstream.ok && env.EMAIL_WEBHOOK_URL && env.EMAIL_WEBHOOK_SECRET){
+   ctx.waitUntil(notifyNewLead(env,payload).catch(error=>console.error('lead_email_notification_failed',String(error))));
+  }
   return upstream.ok?new Response(JSON.stringify({ok:true}),{status:201,headers:{'content-type':'application/json'}}):new Response('Unable to save lead',{status:502});
  }
 };
+async function notifyNewLead(env,lead){
+ const url=String(env.EMAIL_WEBHOOK_URL).trim();
+ if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url)){
+  console.error('lead_email_invalid_webhook_url');return;
+ }
+ const response=await fetch(url,{
+  method:'POST',
+  headers:{'Content-Type':'text/plain;charset=utf-8'},
+  body:JSON.stringify({...lead,secret:String(env.EMAIL_WEBHOOK_SECRET)}),
+  redirect:'follow'
+ });
+ if(!response.ok){console.error('lead_email_http_error',response.status);return;}
+ const result=await response.text();
+ if(!result.includes('"ok":true'))console.error('lead_email_unconfirmed_response',result.slice(0,160));
+}
 const json=(obj,status=200)=>Response.json(obj,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 async function handleAdmin(request,env,path){
  if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY||!env.ADMIN_EMAIL)return json({error:'Painel não configurado: ADMIN_EMAIL ausente.'},503);
