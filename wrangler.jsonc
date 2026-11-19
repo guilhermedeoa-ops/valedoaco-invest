@@ -12,5 +12,9 @@
   },
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "SUPABASE_URL": "https://brabcgkawqxrpuiwqzth.supabase.co",
+    "ADMIN_EMAIL": "guilherme.amaral.invest@gmail.com"
   }
 }
