@@ -69,7 +69,7 @@ async function handleAdmin(request,env,path){
  const user=await verify.json();
  if(!user.id||user.email?.toLowerCase()!==env.ADMIN_EMAIL.trim().toLowerCase())return json({error:'Acesso negado'},403);
  const pageRaw=new URL(request.url).searchParams.get('page')||'1';
- if(!/^[1-9]\\d{0,5}$/.test(pageRaw))return json({error:'Página inválida'},400);
+ if(!/^[1-9]\d{0,5}$/.test(pageRaw))return json({error:'Página inválida'},400);
  const page=Number(pageRaw),size=50,offset=(page-1)*size;
  const list=await fetch(base+'/rest/v1/leads?select=id,created_at,nome,telefone,modalidade,faixa_credito,mensagem,status&order=created_at.desc&limit='+(size+1)+'&offset='+offset,{headers});
  if(!list.ok){console.error('admin_leads_fetch_failed',list.status);return json({error:'Não foi possível carregar contatos'},502)}
