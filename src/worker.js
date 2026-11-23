@@ -72,7 +72,7 @@ async function handleAdmin(request,env,path){
   if(request.method!=='GET')return json({error:'Método inválido'},405);
   const params=new URL(request.url).searchParams;
   const pageRaw=params.get('page')||'1';
-  if(!/^[1-9]\\d{0,4}$/.test(pageRaw))return json({error:'Página inválida'},400);
+  if(!/^[1-9]\d{0,4}$/.test(pageRaw))return json({error:'Página inválida'},400);
   const page=Number(pageRaw),size=50;
   const query=new URLSearchParams({select:'id,criado_em,nome_completo,profissao,estado_civil,cpf,nascimento,email,renda_bruta_mensal,endereco,cep,whatsapp',order:'criado_em.desc',limit:String(size+1),offset:String((page-1)*size)});
   const response=await fetch(base+'/rest/v1/cadastros_valedoaco_invest?'+query,{headers});
