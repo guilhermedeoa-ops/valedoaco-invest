@@ -61,13 +61,24 @@ async function handleAdmin(request,env,path){
   if(!session.access_token)return json({error:'Falha de autenticação'},502);
   return json({access_token:session.access_token,expires_in:session.expires_in});
  }
- if(!['/api/admin/leads','/api/admin/lead'].includes(path))return json({error:'Rota não encontrada'},404);
+ if(!['/api/admin/leads','/api/admin/lead','/api/admin/cadastros'].includes(path))return json({error:'Rota não encontrada'},404);
  const authorization=request.headers.get('Authorization')||'';
  if(!authorization.startsWith('Bearer '))return json({error:'Login necessário'},401);
  const verify=await fetch(base+'/auth/v1/user',{headers:{apikey:key,Authorization:authorization}});
  if(!verify.ok)return json({error:'Sessão inválida ou expirada'},401);
  const user=await verify.json();
  if(!user.id||user.email?.toLowerCase()!==env.ADMIN_EMAIL.trim().toLowerCase())return json({error:'Acesso negado'},403);
+ if(path==='/api/admin/cadastros'){
+  if(request.method!=='GET')return json({error:'Método inválido'},405);
+  const params=new URL(request.url).searchParams;
+  const pageRaw=params.get('page')||'1';
+  if(!/^[1-9]\\d{0,4}$/.test(pageRaw))return json({error:'Página inválida'},400);
+  const page=Number(pageRaw),size=50;
+  const query=new URLSearchParams({select:'id,criado_em,nome_completo,profissao,estado_civil,cpf,nascimento,email,renda_bruta_mensal,endereco,cep,whatsapp',order:'criado_em.desc',limit:String(size+1),offset:String((page-1)*size)});
+  const response=await fetch(base+'/rest/v1/cadastros_valedoaco_invest?'+query,{headers});
+  if(!response.ok){console.error('admin_cadastros_fetch_failed',response.status);return json({error:'Não foi possível carregar cadastros'},502)}
+  const rows=await response.json();return json({cadastros:rows.slice(0,size),page,has_more:rows.length>size});
+ }
  if(path==='/api/admin/lead'){
   if(request.method!=='PATCH')return json({error:'Método inválido'},405);
   let data;try{data=await request.json()}catch{return json({error:'Dados inválidos'},400)}
